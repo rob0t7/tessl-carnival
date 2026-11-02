@@ -1,0 +1,246 @@
+# Set up automations in Tessl
+
+"Ship tickets", "answer reviews and fix checks", "follow ticket changes", "fix
+merge conflicts", and "Learn from past work" are set up in Tessl directly, the same way the web app
+sets them up: no `tessl.json` entries, no pull request, and they are on as
+soon as the call returns. Every other starter is set up in `tessl.json`.
+
+Call these with `tessl api`, which uses the user's own login. `<project id>`
+is the project's id from [The project](../SKILL.md#the-project), or, when
+this folder has a `tessl.json`, `linkedProject.id` from
+`tessl project repair --json`; `<org id>` is the organization [The
+project](../SKILL.md#the-project) chose.
+
+## What is there already
+
+Before you set anything up, list the project's Loops:
+`tessl schedule list --project-id <project id> --all --json`. Each entry's
+`attributes.definitionSource` is `app` for a Loop set up in Tessl and `repo`
+for one from `tessl.json`, and `attributes.label` is its name.
+
+- Do not set up an automation the project already has, from either source.
+  Say it is already on.
+- When `tessl.json` already has the "ship tickets" or "answer reviews" actions
+  (an action whose skill is `tessl-labs/factory#implement-github-issue`,
+  `#implement-linear`, `#shepherd`, or `#follow-ticket-changes`), do not set up
+  Ticket to PR in Tessl as well: Tessl would run both, and two agents would
+  answer the same pull request. Keep the `tessl.json` ones, and say so.
+
+## Ticket to PR
+
+Apply [Regional setup](region.md) first. In the EU, explicitly send the
+GitHub issue source in both the plan query and setup body below; omitting
+it defaults to Linear. Keep every call in the selected region.
+
+One call sets up the automations together: "ship tickets" (Tessl's
+name: Implement ticket), "answer reviews and fix checks" (Shepherd PR),
+"follow ticket changes", and "fix merge conflicts" (Merge conflict sweep),
+which after each push to the default branch starts "answer reviews and fix
+checks" on every Tessl pull request that now conflicts. On a public
+repository, or one whose visibility GitHub does not report, it sets up the
+first three only.
+
+1. Check the Tessl App can reach the repository:
+   `tessl api /experimental/projects/<project id>/factory/helper-access`.
+   `data.attributes.status` is `accessible`, `missing`, or `unavailable`
+   (Tessl could not check; try again shortly). When it is `missing`, give
+   the user the GitHub App links as [The Tessl App](../SKILL.md#the-tessl-app)
+   says, wait until they say it is done, and check again.
+2. Read the plan:
+   `tessl api '/experimental/projects/<project id>/factory/ticket-to-pr?issueSource=github&label=tessl'`
+   for GitHub issues, or `?issueSource=linear` for Linear. Each entry in
+   `data.attributes.loops` is one automation, with its triggers, and an
+   `existingLoopId` when the project already has it; `data.attributes.issueSource`
+   is the source setup will use. When `data.attributes.setupRefusal` is set,
+   the project already takes tickets through the Loop it names, and setup will
+   refuse: tell the person its `message` and stop.
+3. What it creates, for the person: the automations the plan lists, each
+   with its own cloud environment that Tessl creates
+   (`factory-<workspace>-<project>-<stage>`, with GitHub write access, except
+   "fix merge conflicts", which only reads GitHub, and Linear access for
+   Linear). Anyone who can add the label to an issue can start one, which on
+   GitHub needs triage access. On Tessl's pull requests, on a private or
+   internal repository, any comment from someone who is not a bot starts a
+   round, and so does any review except one by the Tessl App itself,
+   including Code Review's; a passed or failed check does too. On a public
+   repository, comments and reviews start a round only from the people who
+   had the maintain or admin role when setup ran, and checks start nothing.
+   The model, the environment and what starts each one cannot be changed on these
+   automations; the `change-factory` skill moves all four into `tessl.json`
+   for that.
+4. On a public repository, or when its visibility is unknown, do not make this
+   call until the person has answered "Continue with these defaults?" with an
+   explicit yes, as [Public repositories](../SKILL.md#public-repositories)
+   says.
+5. Set it up. Write the body to a file and send it:
+   `{"issueSource": {"type": "github", "label": "tessl"}}`, or
+   `{"issueSource": {"type": "linear"}}`, then
+   `tessl api -X POST /experimental/projects/<project id>/factory/ticket-to-pr --input <file>`.
+   It creates the label if it is missing. The answer's
+   `data.attributes.loops` lists each automation's `stage`, Loop `id`, and
+   whether it was `created` or was already there. Call it once: a second call
+   on the same project is refused, because the project then takes tickets.
+6. Check every Loop the answer listed is in
+   `tessl schedule list --project-id <project id> --all --json`, active.
+
+When it refuses:
+
+- "Connect the Tessl App to this repository": step 1 failed; fix the access
+  and try again.
+- Missing organization permission: the first setup creates the environments,
+  which needs `environment.write` on the organization. [Check
+  permissions](permissions.md) and ask for exactly that.
+- Linear: it needs the Linear connection and a team routed to the project;
+  follow [Linear prerequisites](linear.md).
+- "Nobody has the maintain or admin role on this repository": a public
+  repository needs at least one maintainer or admin on GitHub, because only
+  they can start runs by commenting or reviewing. The person gives someone
+  that role on GitHub, then you set up again.
+- "Could not read who maintains this repository on GitHub": try again in a
+  minute; if it keeps refusing, show the message and stop.
+- "This project already takes tickets": a Loop of the project, active or
+  paused, already starts on labelled GitHub issues or Linear issues delegated
+  to Tessl. Name that Loop to the person and stop; setup runs only once that
+  Loop is gone.
+- Anything else: show the `message` it returns, in plain words, and stop.
+
+## The first ticket
+
+Offer open issues and a starter issue you propose from the checked-out repository.
+
+- **Open issues**
+  - GitHub: `tessl api /experimental/projects/<project id>/factory/implement/github-issues`
+    lists them (`number`, `title`, `url`). Offer the first five by title, as the
+    web does. Give one to Tessl with
+    `tessl api -X POST /experimental/projects/<project id>/factory/implement/github-issues/<number>/label`.
+  - Linear: `tessl api /experimental/projects/<project id>/factory/implement/issues`
+    lists them (`identifier`, `title`, `url`, `state`); offer the first five.
+    Delegate one with `tessl api -X POST /experimental/projects/<project id>/factory/implement/delegate --input delegate.json`
+    and `{"issueId": "<the entry's id>"}` in `delegate.json`.
+- **Suggested issue:** read the checked-out repository's agent instructions,
+  source, tests, documentation and CI configuration. Find one concrete,
+  useful change small enough for a first pull request, supported by what you
+  actually read. Check the open issues above to avoid duplicating one.
+  - Draft a specific `title` and a complete `body` with the problem, evidence
+    and relevant file paths, the intended change, scope limits, acceptance
+    criteria and how to validate it. Do not invent a problem or use a generic
+    documentation task as a fallback.
+  - Keep the draft's title and body together. Offer its title, why it helps
+    and the repository evidence; let the person read the full body before
+    choosing.
+  - If the checkout is unavailable or gives too little evidence for a useful
+    suggestion, say so. The choices are an open issue, a task the person
+    writes, or nothing. Never substitute a generic ticket.
+- **A task the person writes:** ask for the title and the description.
+
+Nothing is created, labelled or delegated until the person chooses. File a
+chosen suggestion with its exact `title` and complete `body`, unchanged.
+
+When you have the tracker's own tools, file it as the person: for GitHub
+issues, `gh` logged in, follow [create-github-issue](../../create-github-issue/SKILL.md);
+for Linear, a Linear MCP server or the person's `LINEAR_API_KEY`, follow
+[create-linear-issue](../../create-linear-issue/SKILL.md). The person then owns
+the issue. Without them, file it through Tessl as below, and say the issue is
+filed by Tessl's app rather than by them. Write
+the request to a `.json` file from the selected draft, without rewriting or
+shortening the body:
+`{"title": …, "body": …}` for GitHub, sent with
+`tessl api -X POST /experimental/projects/<project id>/factory/implement/github-issues --input issue.json`,
+or `{"teamId": "<routed team id>", "title": …, "description": <the body>}` for
+Linear, sent to `…/implement/issues` the same way. Choosing a different
+suggestion replaces the title and body together. If the person edits the
+title, keep the body only when they confirm it still fits; a task they write
+never reuses a suggestion's body.
+
+## Learn from past work
+
+`tessl api -X POST /v1/orgs/<org id>/projects/<project id>/loops/learn-from-past-work --input <file>`
+with a body naming the automations the user chose:
+
+```json
+{
+  "loops": {
+    "learn-from-review-feedback": {
+      "cadence": "weekly",
+      "additionalContext": ""
+    },
+    "learn-from-agent-runs": { "cadence": "weekly", "additionalContext": "" },
+    "tune-review-lenses": { "cadence": "weekly", "additionalContext": "" },
+    "turn-findings-into-tickets": {
+      "cadence": "weekly",
+      "additionalContext": "",
+      "environment": { "id": "<environment id>" }
+    }
+  }
+}
+```
+
+Turn findings into tickets files tickets, so it needs an environment that can
+write a GitHub or Linear issue. Read the choices first with
+`tessl api /v1/orgs/<org id>/projects/<project id>/loops/learn-from-past-work`:
+`data.attributes.ticketEnvironments` lists the project's environments with that
+access, the Loops that use each, whether the user may create one, and a
+`suggested` choice. Offer the suggestion, usually the environment "ship
+tickets" takes tickets with, and send `{ "id": "<environment id>" }` or
+`{ "create": true }`. Creating one makes an organization environment with
+GitHub write access, plus Linear write access when Linear is connected, and
+needs an organization admin.
+
+Each entry in the answer's `data.attributes.loops` has an `outcome`:
+`created`, `already-set-up`, or `refused` with a `reason`. A refused one does
+not stop the others: tell the user each refusal's reason. Tessl creates the
+read-only environment Learn from agent runs uses. All run weekly. Name each
+Loop's schedule from `tessl schedule list` when you tell the user.
+
+## Stop, pause, or change one later
+
+- Pause or resume one: `tessl schedule pause <loop id>` and
+  `tessl schedule resume <loop id>`. Pausing prevents automatic starts; runs
+  already active continue and manual runs stay possible.
+- Remove one: `tessl schedule delete <loop id>`. Calling the route again
+  sets up the removed ones only once the project takes no tickets, so not
+  while Implement ticket is still there.
+- Any other change, such as instructions like "run the linter before you
+  push", the model, the environment, or who can start it: move it into
+  `tessl.json`, then change it there. All of the project's Loops set up in
+  Tessl move together. Never edit a Loop set up in Tessl through
+  the API.
+
+## Move a Loop into tessl.json
+
+Move every Loop the project has set up in Tessl, together, in one pull
+request, whichever one the change is for: the four Ticket to PR Loops, and
+the Learn from past work Loops the project has, which may be none. Moving
+opens a pull request on the repository, so ask the person first and name each
+Loop it moves.
+
+1. List the Loops to move:
+   `tessl schedule list --project-id <project id> --all --json`. Take every
+   entry whose `attributes.definitionSource` is `app` and that is not archived.
+2. Move them in one call. Write `{"loopIds": ["<loop id>", ...]}` to a file,
+   then
+   `tessl api -X POST /experimental/projects/<project id>/move-to-repo --input <file>`.
+   It takes at most 10 Loops. It opens one pull request from the default
+   branch that adds them all to `tessl.json`, creating the file when there is
+   none: `data.attributes.pullRequestUrl`. Each entry in
+   `data.attributes.loops` gives a Loop's `id`, the key it has in the file
+   (`repoKey`) and its `warnings`. When these Loops already wait on one pull
+   request, the same call returns it.
+3. When it refuses with a `message` that names a Loop it cannot move, such as
+   one a Tessl setting manages, leave that Loop out and call again. When it
+   says some of the Loops are already being moved by another pull request,
+   give the person that link: it has to merge or close first.
+4. Give the person the pull request's link and every warning. Its action keys
+   must not change before it merges: a renamed key makes Tessl add a second
+   Loop while the old one keeps running.
+5. **Move to tessl.json** on a Loop's page in the web app moves only that
+   Loop, so use the call above.
+6. A refusal about the Tessl App means it cannot reach the repository: get it
+   there as [factory-setup](../SKILL.md#the-tessl-app) says.
+7. Once the pull request merges, Tessl replaces each Loop with the one
+   `tessl.json` declares, keeping its runs. Check that
+   `tessl schedule list --project-id <project id> --all --json` shows each
+   with `definitionSource` `repo`. From then on change them there, through a
+   branch and a pull request.
+
+None of these cancels a run already in progress.

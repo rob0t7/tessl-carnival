@@ -10,4 +10,7 @@ package-lock.json
 .cursor
 .vscode
 .github/skills
+.github/mcp.json
+.gemini
+.mcp.json
 tessl.json
