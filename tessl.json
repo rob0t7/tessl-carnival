@@ -12,5 +12,17 @@
     "codex",
     "copilot",
     "copilot-vscode"
-  ]
+  ],
+  "schedules": {
+    "test-health": {
+      "cron": "0 6 * * 1",
+      "description": "Find weak, dead or misleading tests and file an issue for each one worth repairing",
+      "action": {
+        "skill": "file:tessl-factory#test-health",
+        "environment": "tessl-carnival-loops",
+        "agent": "claude-code",
+        "model": "claude-sonnet-5-5"
+      }
+    }
+  }
 }
